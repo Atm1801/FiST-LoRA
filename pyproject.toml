@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fist-lora"
+version = "1.0.0"
+description = "FiST-LoRA: Fisher-Informed Subspace Training for extremely parameter-efficient low-rank adaptation"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+license = { text = "MIT" }
+authors = [{ name = "atharv", email = "atharvmittal1@gmail.com" }]
+# Exact pins: the experiments are only claimed reproducible under these versions.
+dependencies = [
+    "torch==2.4.1",
+    "transformers==4.45.2",
+    "peft==0.13.2",
+    "accelerate==0.34.2",
+    "datasets==2.21.0",
+    "numpy==1.26.4",
+    "scipy==1.13.1",
+    "scikit-learn==1.5.2",
+    "pyyaml==6.0.2",
+    "matplotlib==3.9.2",
+]
+
+[project.optional-dependencies]
+# 4-bit NF4 backbones (LLaMA-2-7B / Mistral-7B) require CUDA + bitsandbytes.
+gpu = ["bitsandbytes==0.44.1"]
+# Likelihood-based commonsense evaluation.
+eval = ["lm-eval==0.4.5"]
+dev = ["pytest==8.3.3", "ruff==0.6.9"]
+
+[tool.setuptools.packages.find]
+include = ["fist_lora*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not network and not gpu' -p no:cacheprovider"
+markers = [
+    "network: needs Hugging Face Hub / internet access (tiny models, small datasets)",
+    "gpu: needs CUDA and bitsandbytes (4-bit NF4 path)",
+]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501", "B905", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fist_lora", "conftest"]
+
+[tool.ruff.lint.per-file-ignores]
+# The LLM-Adapters prompt template is reproduced verbatim, trailing whitespace included.
+"fist_lora/data/causal.py" = ["W291", "W293"]

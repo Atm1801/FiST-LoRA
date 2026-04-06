@@ -1,0 +1,18 @@
+# GPU environment for the 7B and GLUE experiments (CUDA 12.1 wheels).
+#   pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements/lock-cuda.txt && pip install -e . --no-deps
+# Same versions as pyproject.toml, plus the GPU / evaluation extras.
+torch==2.4.1
+transformers==4.45.2
+peft==0.13.2
+accelerate==0.34.2
+datasets==2.21.0
+numpy==1.26.4
+scipy==1.13.1
+scikit-learn==1.5.2
+pyyaml==6.0.2
+matplotlib==3.9.2
+bitsandbytes==0.44.1
+lm-eval==0.4.5
+pytest==8.3.3
+ruff==0.6.9
