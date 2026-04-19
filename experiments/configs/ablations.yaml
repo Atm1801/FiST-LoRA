@@ -1,0 +1,65 @@
+# FiST-LoRA: Ablation Experiment Configuration
+# Run on GLUE (RoBERTa-large) and CommonSense (LLaMA-2-7B)
+
+ablation_variants:
+  fist_full:
+    outer_init: "fisher_svd"
+    inner_init: "gradient_projected"
+    init_scale: 0.01
+    description: "Full method"
+
+  no_fisher:
+    outer_init: "plain_svd"
+    inner_init: "gradient_projected"
+    init_scale: 0.01
+    description: "Fisher contribution ablation"
+
+  no_grad:
+    outer_init: "fisher_svd"
+    inner_init: "zero"
+    init_scale: 0.0
+    description: "Gradient init contribution ablation"
+
+  lora_xs:
+    outer_init: "plain_svd"
+    inner_init: "zero"
+    init_scale: 0.0
+    description: "LoRA-XS baseline"
+
+  sigma_init:
+    outer_init: "fisher_svd"
+    inner_init: "sigma"
+    init_scale: 0.01
+    description: "Alternative init: diag(sigma) scaled"
+
+  scale_sweep_001:
+    outer_init: "fisher_svd"
+    inner_init: "gradient_projected"
+    init_scale: 0.001
+    description: "Sensitivity: init_scale=0.001"
+
+  scale_sweep_01:
+    outer_init: "fisher_svd"
+    inner_init: "gradient_projected"
+    init_scale: 0.01
+    description: "Sensitivity: init_scale=0.01 (default)"
+
+  scale_sweep_1:
+    outer_init: "fisher_svd"
+    inner_init: "gradient_projected"
+    init_scale: 0.1
+    description: "Sensitivity: init_scale=0.1 (aggressive)"
+
+glue:
+  model: "roberta-large"
+  ranks: [8, 32]
+  tasks: ["sst2", "mrpc", "qnli", "rte"]
+  lr: 1.0e-3
+
+commonsense:
+  model: "meta-llama/Llama-2-7b-hf"
+  ranks: [32]
+  lr: 1.0e-4
+
+seeds: [42, 123, 456]
+output_dir: "results/ablations"

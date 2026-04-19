@@ -1,0 +1,69 @@
+# FiST-LoRA: CommonSense Experiment Configuration
+# Model: LLaMA-2-7B on CommonSense170K
+
+model:
+  name: "meta-llama/Llama-2-7b-hf"
+  task_type: "causal_lm"
+
+adapter:
+  ranks: [32, 64]
+  alpha: 32.0
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"]
+  init_scale: 0.01
+
+calibration:
+  num_samples: 256
+  head_warmup_steps: 100
+  head_warmup_lr: 1.0e-3
+  head_warmup_batch_size: 4
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+training:
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 16  # effective batch_size = 64
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  fp16: false
+  bf16: true
+  max_seq_length: 256
+  logging_steps: 50
+  eval_strategy: "epoch"
+  save_strategy: "no"
+  gradient_checkpointing: true
+
+methods:
+  lora:
+    lr: 2.0e-5
+    # Standard LoRA with r=32, full-size A,B trainable
+  lora_xs:
+    lr: 1.0e-4
+  fist_no_fisher:
+    lr: 1.0e-4
+  fist_full:
+    lr: 1.0e-4
+  lora_sb:
+    lr: 1.0e-4
+    # LoRA-SB from github.com/CERT-Lab/lora-sb
+
+eval_tasks:
+  - boolq
+  - piqa
+  - siqa
+  - hellaswag
+  - winogrande
+  - arc_easy
+  - arc_challenge
+  - openbookqa
+
+training_data:
+  name: "commonsense_170k"
+  # Use LLM-Adapters CommonSense170K format
+  epochs: 3
+
+seeds: [42, 123, 456]
+output_dir: "results/commonsense"

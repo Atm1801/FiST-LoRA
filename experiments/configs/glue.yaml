@@ -1,0 +1,111 @@
+# FiST-LoRA: GLUE Experiment Configuration
+# Model: RoBERTa-large on 8 GLUE tasks
+
+model:
+  name: "roberta-large"
+  task_type: "seq_cls"
+
+adapter:
+  ranks: [8, 32]
+  alpha: 32.0
+  target_modules: ["query", "key", "value"]
+  init_scale: 0.01
+
+calibration:
+  num_samples: 256
+  head_warmup_steps: 100
+  head_warmup_lr: 1.0e-3
+  head_warmup_batch_size: 32
+
+training:
+  per_device_train_batch_size: 32
+  per_device_eval_batch_size: 64
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  fp16: false
+  max_seq_length: 128
+  logging_steps: 50
+  eval_strategy: "epoch"
+  save_strategy: "no"
+  dataloader_num_workers: 0
+
+methods:
+  lora:
+    lr: 2.0e-4
+  lora_xs:
+    lr: 1.0e-3
+  fist_no_fisher:
+    lr: 1.0e-3
+  fist_full:
+    lr: 1.0e-3
+  pissa:
+    lr: 2.0e-4
+
+tasks:
+  sst2:
+    num_labels: 2
+    metric: "accuracy"
+    epochs: 3
+    text_keys: ["sentence", null]
+    dataset: "glue"
+    subset: "sst2"
+
+  mrpc:
+    num_labels: 2
+    metric: "f1"
+    epochs: 5
+    text_keys: ["sentence1", "sentence2"]
+    dataset: "glue"
+    subset: "mrpc"
+
+  qnli:
+    num_labels: 2
+    metric: "accuracy"
+    epochs: 3
+    text_keys: ["question", "sentence"]
+    dataset: "glue"
+    subset: "qnli"
+
+  rte:
+    num_labels: 2
+    metric: "accuracy"
+    epochs: 5
+    text_keys: ["sentence1", "sentence2"]
+    dataset: "glue"
+    subset: "rte"
+
+  mnli:
+    num_labels: 3
+    metric: "accuracy"
+    epochs: 3
+    text_keys: ["premise", "hypothesis"]
+    dataset: "glue"
+    subset: "mnli"
+    val_split: "validation_matched"
+
+  qqp:
+    num_labels: 2
+    metric: "accuracy"
+    epochs: 3
+    text_keys: ["question1", "question2"]
+    dataset: "glue"
+    subset: "qqp"
+
+  cola:
+    num_labels: 2
+    metric: "matthews_correlation"
+    epochs: 5
+    text_keys: ["sentence", null]
+    dataset: "glue"
+    subset: "cola"
+
+  stsb:
+    num_labels: 1
+    metric: "spearmanr"
+    epochs: 5
+    text_keys: ["sentence1", "sentence2"]
+    dataset: "glue"
+    subset: "stsb"
+
+seeds: [42, 123, 456]
+output_dir: "results/glue"

@@ -1,0 +1,63 @@
+# FiST-LoRA: Math Experiment Configuration
+# Model: Mistral-7B on MetaMathQA
+
+model:
+  name: "mistralai/Mistral-7B-v0.1"
+  task_type: "causal_lm"
+
+adapter:
+  ranks: [32, 64, 96]
+  alpha: 32.0
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"]
+  init_scale: 0.01
+
+calibration:
+  num_samples: 256
+  head_warmup_steps: 100
+  head_warmup_lr: 1.0e-3
+  head_warmup_batch_size: 4
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+training:
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 32  # effective batch_size = 128
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  fp16: false
+  bf16: true
+  max_seq_length: 512
+  logging_steps: 50
+  eval_strategy: "epoch"
+  save_strategy: "no"
+  gradient_checkpointing: true
+
+methods:
+  lora:
+    lr: 2.0e-5
+  lora_xs:
+    lr: 1.0e-4
+  fist_no_fisher:
+    lr: 1.0e-4
+  fist_full:
+    lr: 1.0e-4
+  lora_sb:
+    lr: 1.0e-4
+
+training_data:
+  name: "meta-math/MetaMathQA"
+  max_samples: 50000
+  epochs: 2
+
+eval_tasks:
+  gsm8k:
+    metric: "exact_match"
+  math:
+    metric: "exact_match"
+
+seeds: [42, 123, 456]
+output_dir: "results/math"
