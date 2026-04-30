@@ -150,10 +150,12 @@ CALIBRATION_SAMPLES = 256
 INIT_SCALE = 0.01
 WARMUP_RATIO = 0.06  # LoRA-SB / LoRA paper standard
 
-# LR per method (matches each method's published recipe)
+# LR per method at bs=128 (LoRA-SB-style unified recipe).
+# r²-methods use LoRA-SB's published lr=1e-3. LoRA/PiSSA bumped from 4e-4
+# to 5e-4 to compensate for the larger batch vs the LoRA paper's bs=4-8.
 METHOD_LRS = {
-    "lora": 4e-4,
-    "pissa": 4e-4,
+    "lora": 5e-4,
+    "pissa": 5e-4,
     "lora_xs": 1e-3,
     "fist_no_fisher": 1e-3,
     "fist_full": 1e-3,
@@ -177,6 +179,7 @@ def tokenize_glue(raw_dataset, tokenizer, text_keys, max_length=128):
                 examples[key1], examples[key2], truncation=True, max_length=max_length
             )
         enc["labels"] = examples["label"]
+        enc["length"] = [len(ids) for ids in enc["input_ids"]]
         return enc
 
     cols_to_remove = list(raw_dataset["train"].column_names)
@@ -396,10 +399,10 @@ def main():
                         help="Path to YAML config (overrides CLI args)")
     parser.add_argument("--report_to", type=str, default="none",
                         help="Reporting backend (none, wandb)")
-    parser.add_argument("--train_batch_size", type=int, default=32,
-                        help="Per-device train batch size (default: 32)")
-    parser.add_argument("--eval_batch_size", type=int, default=128,
-                        help="Per-device eval batch size (default: 128)")
+    parser.add_argument("--train_batch_size", type=int, default=128,
+                        help="Per-device train batch size (default: 128, LoRA-SB recipe)")
+    parser.add_argument("--eval_batch_size", type=int, default=256,
+                        help="Per-device eval batch size (default: 256)")
     parser.add_argument("--fp16", action="store_true", default=False,
                         help="Use fp16 mixed precision (unstable on RoBERTa-large)")
     parser.add_argument("--bf16", action="store_true", default=True,
@@ -643,7 +646,10 @@ def main():
                         bf16=args.bf16,
                         report_to=args.report_to,
                         dataloader_num_workers=args.num_workers,
+                        dataloader_pin_memory=True,
                         tf32=True,
+                        group_by_length=True,
+                        length_column_name="length",
                     )
 
                     trainer = Trainer(
@@ -652,7 +658,7 @@ def main():
                         train_dataset=train_tok,
                         eval_dataset=val_tok,
                         processing_class=tokenizer,
-                        data_collator=DataCollatorWithPadding(tokenizer),
+                        data_collator=DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8),
                         compute_metrics=build_compute_metrics(
                             task_cfg["metric"], task_name
                         ),
