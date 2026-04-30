@@ -133,7 +133,7 @@ TASKS = {
     },
 }
 
-ALL_METHODS = ["lora", "lora_xs", "fist_no_fisher", "fist_full", "pissa"]
+ALL_METHODS = ["lora", "lora_xs", "fist_no_fisher", "fist_full", "pissa", "lora_sb"]
 MODEL_NAME = "roberta-large"
 TARGET_MODULES = ["query", "key", "value"]
 ALPHA = 32.0
@@ -148,6 +148,7 @@ METHOD_LRS = {
     "lora_xs": 1e-3,
     "fist_no_fisher": 1e-3,
     "fist_full": 1e-3,
+    "lora_sb": 1e-3,
 }
 
 
@@ -247,7 +248,59 @@ def is_valid_result(entry: dict) -> bool:
     return "metric" in entry and "error" not in entry
 
 
-def apply_adapter(model, method, rank, svd_plain, svd_fisher, grad_R_plain, grad_R_fisher):
+def compute_gradient_svd(model, dataloader, target_module_names, rank, num_samples=256):
+    """
+    Compute SVD of the average gradient for each target module.
+    Used by LoRA-SB: B and A come from gradient SVD, not weight SVD.
+    """
+    device = next(model.parameters()).device
+    model.eval()
+
+    target_modules = {}
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear) and any(
+            name.endswith(t) for t in target_module_names
+        ):
+            target_modules[name] = module
+
+    for module in target_modules.values():
+        module.weight.requires_grad_(True)
+
+    grad_accum = {
+        name: torch.zeros_like(module.weight, device=device)
+        for name, module in target_modules.items()
+    }
+
+    samples_seen = 0
+    for batch in dataloader:
+        if samples_seen >= num_samples:
+            break
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        outputs = model(**batch)
+        loss = outputs.loss if outputs.loss is not None else outputs.logits.sum()
+        loss.backward()
+
+        for name, module in target_modules.items():
+            if module.weight.grad is not None:
+                grad_accum[name] += module.weight.grad.detach()
+
+        model.zero_grad()
+        samples_seen += batch[next(iter(batch))].size(0)
+
+    for module in target_modules.values():
+        module.weight.requires_grad_(False)
+
+    svd_results = {}
+    for name in target_modules:
+        G = grad_accum[name] / max(samples_seen, 1)
+        U, S, Vt = torch.linalg.svd(G.float(), full_matrices=False)
+        svd_results[name] = (U[:, :rank].clone(), S[:rank].clone(), Vt[:rank, :].clone())
+
+    return svd_results
+
+
+def apply_adapter(model, method, rank, svd_plain, svd_fisher, grad_R_plain, grad_R_fisher,
+                  svd_grad=None, grad_R_grad=None):
     """Apply the specified adapter method to the model."""
     from peft import get_peft_model, LoraConfig, TaskType
 
@@ -300,6 +353,14 @@ def apply_adapter(model, method, rank, svd_plain, svd_fisher, grad_R_plain, grad
             model, TARGET_MODULES, B_dict, A_dict, R_dict, ALPHA, rank
         )
 
+    elif method == "lora_sb":
+        B_dict = {n: BA[0] for n, BA in svd_grad.items()}
+        A_dict = {n: BA[2] for n, BA in svd_grad.items()}
+        R_dict = {n: grad_R_grad.get(n, zero_R(rank)) for n in svd_grad}
+        model = inject_fist_lora(
+            model, TARGET_MODULES, B_dict, A_dict, R_dict, ALPHA, rank
+        )
+
     else:
         raise ValueError(f"Unknown method: {method}")
 
@@ -326,7 +387,22 @@ def main():
                         help="Path to YAML config (overrides CLI args)")
     parser.add_argument("--report_to", type=str, default="none",
                         help="Reporting backend (none, wandb)")
+    parser.add_argument("--train_batch_size", type=int, default=256,
+                        help="Per-device train batch size (default: 256)")
+    parser.add_argument("--eval_batch_size", type=int, default=512,
+                        help="Per-device eval batch size (default: 512)")
+    parser.add_argument("--fp16", action="store_true", default=True,
+                        help="Use fp16 mixed precision (default: True)")
+    parser.add_argument("--no_fp16", action="store_true",
+                        help="Disable fp16, use fp32")
+    parser.add_argument("--bf16", action="store_true", default=False,
+                        help="Use bf16 mixed precision")
+    parser.add_argument("--num_workers", type=int, default=4,
+                        help="Dataloader num_workers (default: 4)")
     args = parser.parse_args()
+
+    if args.no_fp16:
+        args.fp16 = False
 
     # Load config if provided
     if args.config:
@@ -410,8 +486,10 @@ def main():
         # Collect SVD and gradient R for all ranks
         svd_plain_by_rank = {}
         svd_fisher_by_rank = {}
+        svd_grad_by_rank = {}
         grad_R_plain_by_rank = {}
         grad_R_fisher_by_rank = {}
+        grad_R_grad_by_rank = {}
 
         for rank in ranks:
             svd_plain_by_rank[rank] = collect_plain_svd(
@@ -455,6 +533,30 @@ def main():
                 description=f"gradient_projected_R fisher rank={rank}",
             )
 
+            # LoRA-SB: gradient SVD for outer matrices + gradient R
+            print(f"Computing gradient SVD for LoRA-SB (rank={rank})...")
+            svd_grad_by_rank[rank] = safe_run(
+                lambda r=rank: compute_gradient_svd(
+                    base_model, calibration_loader, TARGET_MODULES, r,
+                    CALIBRATION_SAMPLES,
+                ),
+                fallback=svd_plain_by_rank[rank],
+                description=f"gradient_svd rank={rank}",
+            )
+            grad_ba = {
+                name: (B, A)
+                for name, (B, S, A) in svd_grad_by_rank[rank].items()
+            }
+            grad_R_grad_by_rank[rank] = safe_run(
+                lambda ba=grad_ba, r=rank: gradient_projected_R(
+                    base_model, calibration_loader, ba,
+                    TARGET_MODULES, CALIBRATION_SAMPLES, ALPHA, r,
+                    init_scale=INIT_SCALE,
+                ),
+                fallback={name: zero_R(rank) for name in grad_ba},
+                description=f"gradient_projected_R grad-svd rank={rank}",
+            )
+
         # Free calibration model
         del base_model
         if device.type == "cuda":
@@ -492,6 +594,8 @@ def main():
                             svd_fisher_by_rank[rank],
                             grad_R_plain_by_rank[rank],
                             grad_R_fisher_by_rank[rank],
+                            svd_grad=svd_grad_by_rank.get(rank),
+                            grad_R_grad=grad_R_grad_by_rank.get(rank),
                         )
                     except Exception:
                         print(f"[ERROR] Adapter construction failed for {method}:")
@@ -499,13 +603,16 @@ def main():
                         results[task_name][seed_key][method] = {
                             "error": "adapter_construction_failed"
                         }
+                        with open(results_path, "w") as f:
+                            json.dump(results, f, indent=2, default=str)
                         continue
 
                     trainable, total = print_trainable_summary(model, method)
 
                     lr = METHOD_LRS.get(method, 1e-3)
+                    train_bs = args.train_batch_size
                     warmup_steps = compute_warmup_steps(
-                        len(train_tok), 32, task_cfg["epochs"]
+                        len(train_tok), train_bs, task_cfg["epochs"]
                     )
 
                     training_args = TrainingArguments(
@@ -513,8 +620,8 @@ def main():
                             args.output_dir, task_name, f"{method}_r{rank}_s{seed}"
                         ),
                         num_train_epochs=task_cfg["epochs"],
-                        per_device_train_batch_size=32,
-                        per_device_eval_batch_size=64,
+                        per_device_train_batch_size=train_bs,
+                        per_device_eval_batch_size=args.eval_batch_size,
                         learning_rate=lr,
                         weight_decay=0.0,
                         warmup_steps=warmup_steps,
@@ -522,9 +629,11 @@ def main():
                         save_strategy="no",
                         logging_steps=50,
                         seed=seed,
-                        fp16=False,
+                        fp16=args.fp16,
+                        bf16=args.bf16,
                         report_to=args.report_to,
-                        dataloader_num_workers=0,
+                        dataloader_num_workers=args.num_workers,
+                        tf32=True,
                     )
 
                     trainer = Trainer(
@@ -550,6 +659,8 @@ def main():
                             "trainable_params": trainable,
                             "time_seconds": time.time() - start_time,
                         }
+                        with open(results_path, "w") as f:
+                            json.dump(results, f, indent=2, default=str)
                         del model, trainer
                         if device.type == "cuda":
                             torch.cuda.empty_cache()
@@ -571,14 +682,14 @@ def main():
                     print(f"  Result: {metric_key} = {score}")
                     print(f"  Time:   {elapsed:.1f}s")
 
+                    # Save immediately after each result
+                    with open(results_path, "w") as f:
+                        json.dump(results, f, indent=2, default=str)
+                    print(f"  [Saved] {task_name}/{seed_key}/{method} -> {results_path}")
+
                     del model, trainer
                     if device.type == "cuda":
                         torch.cuda.empty_cache()
-
-        # Checkpoint results after each task
-        with open(results_path, "w") as f:
-            json.dump(results, f, indent=2, default=str)
-        print(f"\n[Checkpoint] Results saved to {results_path}")
 
     # ============================================================
     # SUMMARY TABLE
