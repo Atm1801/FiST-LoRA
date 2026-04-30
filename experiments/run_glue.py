@@ -65,7 +65,6 @@ from fist_lora.utils import (
     set_seed,
     warmup_classifier_head,
     make_calibration_loader,
-    compute_warmup_steps,
     get_device,
     print_trainable_summary,
 )
@@ -74,60 +73,70 @@ from fist_lora.utils import (
 # DEFAULT CONFIGURATION
 # ============================================================
 
+# Per-task config (epochs/max_seq_len follow LoRA-SB and LoRA paper recipes).
+# Larger tasks: fewer epochs. Small tasks: many epochs to reach convergence.
 TASKS = {
     "sst2": {
         "num_labels": 2,
         "metric": "accuracy",
-        "epochs": 3,
+        "epochs": 20,
+        "max_seq_len": 128,
         "text_keys": ("sentence", None),
         "val_split": "validation",
     },
     "mrpc": {
         "num_labels": 2,
         "metric": "f1",
-        "epochs": 5,
+        "epochs": 30,
+        "max_seq_len": 256,
         "text_keys": ("sentence1", "sentence2"),
         "val_split": "validation",
     },
     "qnli": {
         "num_labels": 2,
         "metric": "accuracy",
-        "epochs": 3,
+        "epochs": 10,
+        "max_seq_len": 256,
         "text_keys": ("question", "sentence"),
         "val_split": "validation",
     },
     "rte": {
         "num_labels": 2,
         "metric": "accuracy",
-        "epochs": 5,
+        "epochs": 50,
+        "max_seq_len": 256,
         "text_keys": ("sentence1", "sentence2"),
         "val_split": "validation",
     },
     "mnli": {
         "num_labels": 3,
         "metric": "accuracy",
-        "epochs": 3,
+        "epochs": 10,
+        "max_seq_len": 128,
         "text_keys": ("premise", "hypothesis"),
         "val_split": "validation_matched",
     },
     "qqp": {
         "num_labels": 2,
         "metric": "accuracy",
-        "epochs": 3,
+        "epochs": 10,
+        "max_seq_len": 256,
         "text_keys": ("question1", "question2"),
         "val_split": "validation",
     },
     "cola": {
         "num_labels": 2,
         "metric": "matthews_correlation",
-        "epochs": 5,
+        "epochs": 30,
+        "max_seq_len": 128,
         "text_keys": ("sentence", None),
         "val_split": "validation",
     },
     "stsb": {
         "num_labels": 1,
         "metric": "spearmanr",
-        "epochs": 5,
+        "epochs": 30,
+        "max_seq_len": 256,
         "text_keys": ("sentence1", "sentence2"),
         "val_split": "validation",
     },
@@ -139,12 +148,12 @@ TARGET_MODULES = ["query", "key", "value"]
 ALPHA = 32.0
 CALIBRATION_SAMPLES = 256
 INIT_SCALE = 0.01
-MAX_SEQ_LEN = 128
+WARMUP_RATIO = 0.06  # LoRA-SB / LoRA paper standard
 
-# LR per method
+# LR per method (matches each method's published recipe)
 METHOD_LRS = {
-    "lora": 2e-4,
-    "pissa": 2e-4,
+    "lora": 4e-4,
+    "pissa": 4e-4,
     "lora_xs": 1e-3,
     "fist_no_fisher": 1e-3,
     "fist_full": 1e-3,
@@ -156,7 +165,7 @@ METHOD_LRS = {
 # HELPERS
 # ============================================================
 
-def tokenize_glue(raw_dataset, tokenizer, text_keys, max_length=MAX_SEQ_LEN):
+def tokenize_glue(raw_dataset, tokenizer, text_keys, max_length=128):
     """Tokenize GLUE train + validation splits."""
     key1, key2 = text_keys
 
@@ -387,22 +396,24 @@ def main():
                         help="Path to YAML config (overrides CLI args)")
     parser.add_argument("--report_to", type=str, default="none",
                         help="Reporting backend (none, wandb)")
-    parser.add_argument("--train_batch_size", type=int, default=256,
-                        help="Per-device train batch size (default: 256)")
-    parser.add_argument("--eval_batch_size", type=int, default=512,
-                        help="Per-device eval batch size (default: 512)")
-    parser.add_argument("--fp16", action="store_true", default=True,
-                        help="Use fp16 mixed precision (default: True)")
-    parser.add_argument("--no_fp16", action="store_true",
-                        help="Disable fp16, use fp32")
-    parser.add_argument("--bf16", action="store_true", default=False,
-                        help="Use bf16 mixed precision")
+    parser.add_argument("--train_batch_size", type=int, default=32,
+                        help="Per-device train batch size (default: 32)")
+    parser.add_argument("--eval_batch_size", type=int, default=128,
+                        help="Per-device eval batch size (default: 128)")
+    parser.add_argument("--fp16", action="store_true", default=False,
+                        help="Use fp16 mixed precision (unstable on RoBERTa-large)")
+    parser.add_argument("--bf16", action="store_true", default=True,
+                        help="Use bf16 mixed precision (default: True)")
+    parser.add_argument("--no_bf16", action="store_true",
+                        help="Disable bf16, use fp32")
     parser.add_argument("--num_workers", type=int, default=4,
                         help="Dataloader num_workers (default: 4)")
     args = parser.parse_args()
 
-    if args.no_fp16:
-        args.fp16 = False
+    if args.no_bf16:
+        args.bf16 = False
+    if args.fp16:
+        args.bf16 = False
 
     # Load config if provided
     if args.config:
@@ -451,7 +462,8 @@ def main():
         print(f"Loading dataset: glue/{task_name}")
         raw_dataset = load_dataset("glue", task_name)
         train_tok, val_tok = tokenize_glue(
-            raw_dataset, tokenizer, task_cfg["text_keys"]
+            raw_dataset, tokenizer, task_cfg["text_keys"],
+            max_length=task_cfg["max_seq_len"],
         )
         print(f"Train size: {len(train_tok):,}  Val size: {len(val_tok):,}")
 
@@ -611,9 +623,6 @@ def main():
 
                     lr = METHOD_LRS.get(method, 1e-3)
                     train_bs = args.train_batch_size
-                    warmup_steps = compute_warmup_steps(
-                        len(train_tok), train_bs, task_cfg["epochs"]
-                    )
 
                     training_args = TrainingArguments(
                         output_dir=os.path.join(
@@ -624,7 +633,8 @@ def main():
                         per_device_eval_batch_size=args.eval_batch_size,
                         learning_rate=lr,
                         weight_decay=0.0,
-                        warmup_steps=warmup_steps,
+                        warmup_ratio=WARMUP_RATIO,
+                        lr_scheduler_type="linear",
                         eval_strategy="epoch",
                         save_strategy="no",
                         logging_steps=50,
