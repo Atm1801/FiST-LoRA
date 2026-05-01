@@ -56,6 +56,7 @@ from fist_lora.init import (
 from fist_lora.layers import FiSTLoRALinear
 from fist_lora.model import (
     inject_fist_lora,
+    inject_standard_lora,
     count_trainable_params,
     count_total_params,
     collect_plain_svd,
@@ -150,16 +151,14 @@ CALIBRATION_SAMPLES = 256
 INIT_SCALE = 0.01
 WARMUP_RATIO = 0.06  # LoRA-SB / LoRA paper standard
 
-# LR per method at bs=128 (LoRA-SB-style unified recipe).
-# r²-methods use LoRA-SB's published lr=1e-3. LoRA/PiSSA bumped from 4e-4
-# to 5e-4 to compensate for the larger batch vs the LoRA paper's bs=4-8.
+# LR per method at bs=256 (LoRA-SB's bs=128 lr=1e-3 scaled by sqrt(2)).
 METHOD_LRS = {
-    "lora": 5e-4,
-    "pissa": 5e-4,
-    "lora_xs": 1e-3,
-    "fist_no_fisher": 1e-3,
-    "fist_full": 1e-3,
-    "lora_sb": 1e-3,
+    "lora": 7e-4,
+    "pissa": 7e-4,
+    "lora_xs": 1.4e-3,
+    "fist_no_fisher": 1.4e-3,
+    "fist_full": 1.4e-3,
+    "lora_sb": 1.4e-3,
 }
 
 
@@ -243,6 +242,97 @@ def safe_run(fn, fallback, description=""):
         return fallback
 
 
+def save_training_artifacts(trainer, output_dir, task_name, method, rank, seed, task_metric):
+    """Dump full HF log_history to curves/ and render per-run loss + metric plot to figures/."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    curves_dir = Path(output_dir) / "curves" / task_name
+    figures_dir = Path(output_dir) / "figures" / task_name
+    curves_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = f"{method}_r{rank}_s{seed}"
+    log_history = trainer.state.log_history
+
+    with open(curves_dir / f"{run_id}.json", "w") as f:
+        json.dump(log_history, f, indent=2, default=str)
+
+    train_steps, train_losses = [], []
+    eval_epochs, eval_losses, eval_metrics = [], [], []
+    metric_key = f"eval_{task_metric}"
+
+    for entry in log_history:
+        if "loss" in entry and "eval_loss" not in entry and "step" in entry:
+            train_steps.append(entry["step"])
+            train_losses.append(entry["loss"])
+        if "eval_loss" in entry:
+            eval_epochs.append(entry.get("epoch", 0))
+            eval_losses.append(entry["eval_loss"])
+            if metric_key in entry:
+                eval_metrics.append(entry[metric_key])
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    if train_losses:
+        axes[0].plot(train_steps, train_losses, alpha=0.6, label="train")
+    if eval_losses and train_steps:
+        steps_per_epoch = train_steps[-1] / max(eval_epochs[-1], 1e-6)
+        eval_steps = [e * steps_per_epoch for e in eval_epochs]
+        axes[0].plot(eval_steps, eval_losses, marker="o", label="eval")
+    axes[0].set_xlabel("step"); axes[0].set_ylabel("loss")
+    axes[0].set_title(f"{run_id} — loss"); axes[0].legend(); axes[0].grid(alpha=0.3)
+
+    if eval_metrics:
+        axes[1].plot(eval_epochs, eval_metrics, marker="o", color="tab:green")
+        axes[1].set_xlabel("epoch"); axes[1].set_ylabel(task_metric)
+        axes[1].set_title(f"{run_id} — eval {task_metric}"); axes[1].grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(figures_dir / f"{run_id}.png", dpi=120)
+    plt.close(fig)
+
+
+def plot_aggregate(output_dir, task_name, task_metric, ranks, seeds, methods):
+    """One overlay per (rank, seed) showing all methods on the same axes."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    curves_dir = Path(output_dir) / "curves" / task_name
+    figures_dir = Path(output_dir) / "figures" / task_name
+    if not curves_dir.exists():
+        return
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    metric_key = f"eval_{task_metric}"
+
+    for rank in ranks:
+        for seed in seeds:
+            fig, ax = plt.subplots(figsize=(9, 5))
+            plotted = False
+            for method in methods:
+                p = curves_dir / f"{method}_r{rank}_s{seed}.json"
+                if not p.exists():
+                    continue
+                with open(p) as f:
+                    log = json.load(f)
+                pts = [(e.get("epoch", 0), e[metric_key]) for e in log if metric_key in e]
+                if not pts:
+                    continue
+                xs, ys = zip(*pts)
+                ax.plot(xs, ys, marker="o", label=method)
+                plotted = True
+            if not plotted:
+                plt.close(fig); continue
+            ax.set_xlabel("epoch"); ax.set_ylabel(task_metric)
+            ax.set_title(f"{task_name} — rank={rank}, seed={seed}")
+            ax.legend(); ax.grid(alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(figures_dir / f"all_methods_r{rank}_s{seed}.png", dpi=120)
+            plt.close(fig)
+
+
 def load_existing_results(path: str) -> dict:
     """Load results JSON if it exists."""
     if not os.path.exists(path):
@@ -317,16 +407,10 @@ def apply_adapter(model, method, rank, svd_plain, svd_fisher, grad_R_plain, grad
     from peft import get_peft_model, LoraConfig, TaskType
 
     if method == "lora":
-        peft_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS,
-            r=rank,
-            lora_alpha=ALPHA,
-            lora_dropout=0.0,
-            target_modules=TARGET_MODULES,
-            bias="none",
-            modules_to_save=["classifier"],
-        )
-        model = get_peft_model(model, peft_config)
+        # Manual LoRA injection — avoids PEFT's ModulesToSaveWrapper, which
+        # was silently routing forward through the frozen original classifier
+        # in this pipeline (eval stuck at random-init logits).
+        model = inject_standard_lora(model, TARGET_MODULES, alpha=ALPHA, rank=rank)
 
     elif method == "pissa":
         peft_config = LoraConfig(
@@ -399,10 +483,10 @@ def main():
                         help="Path to YAML config (overrides CLI args)")
     parser.add_argument("--report_to", type=str, default="none",
                         help="Reporting backend (none, wandb)")
-    parser.add_argument("--train_batch_size", type=int, default=128,
-                        help="Per-device train batch size (default: 128, LoRA-SB recipe)")
-    parser.add_argument("--eval_batch_size", type=int, default=256,
-                        help="Per-device eval batch size (default: 256)")
+    parser.add_argument("--train_batch_size", type=int, default=256,
+                        help="Per-device train batch size (default: 256)")
+    parser.add_argument("--eval_batch_size", type=int, default=512,
+                        help="Per-device eval batch size (default: 512)")
     parser.add_argument("--fp16", action="store_true", default=False,
                         help="Use fp16 mixed precision (unstable on RoBERTa-large)")
     parser.add_argument("--bf16", action="store_true", default=True,
@@ -703,9 +787,27 @@ def main():
                         json.dump(results, f, indent=2, default=str)
                     print(f"  [Saved] {task_name}/{seed_key}/{method} -> {results_path}")
 
+                    try:
+                        save_training_artifacts(
+                            trainer, args.output_dir, task_name, method, rank, seed,
+                            task_cfg["metric"],
+                        )
+                    except Exception:
+                        print("[WARN] Failed to save training artifacts:")
+                        traceback.print_exc()
+
                     del model, trainer
                     if device.type == "cuda":
                         torch.cuda.empty_cache()
+
+        try:
+            plot_aggregate(
+                args.output_dir, task_name, task_cfg["metric"],
+                ranks, seeds, methods,
+            )
+        except Exception:
+            print("[WARN] Failed to render aggregate plot:")
+            traceback.print_exc()
 
     # ============================================================
     # SUMMARY TABLE

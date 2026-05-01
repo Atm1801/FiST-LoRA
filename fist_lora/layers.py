@@ -79,3 +79,43 @@ class FiSTLoRALinear(nn.Module):
             f"in={self.in_features}, out={self.out_features}, "
             f"rank={self.rank}, scaling={self.scaling:.4f}"
         )
+
+
+class StandardLoRALinear(nn.Module):
+    """
+    Standard LoRA (Hu et al. 2021): h = F.linear(x, W) + (alpha/r) * x @ A^T @ B^T
+    A: kaiming uniform init (trainable). B: zero init (trainable).
+    Pretrained W is frozen.
+    """
+
+    def __init__(self, original_linear: nn.Linear, alpha: float, rank: int):
+        super().__init__()
+        self.in_features = original_linear.in_features
+        self.out_features = original_linear.out_features
+        self.rank = rank
+        self.scaling = alpha / rank
+
+        self.weight = nn.Parameter(
+            original_linear.weight.data.clone(), requires_grad=False
+        )
+        if original_linear.bias is not None:
+            self.bias = nn.Parameter(
+                original_linear.bias.data.clone(), requires_grad=False
+            )
+        else:
+            self.bias = None
+
+        self.lora_A = nn.Parameter(torch.empty(rank, self.in_features))
+        self.lora_B = nn.Parameter(torch.zeros(self.out_features, rank))
+        nn.init.kaiming_uniform_(self.lora_A, a=5 ** 0.5)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = F.linear(x, self.weight, self.bias)
+        out = out + self.scaling * F.linear(F.linear(x, self.lora_A), self.lora_B)
+        return out
+
+    def extra_repr(self) -> str:
+        return (
+            f"in={self.in_features}, out={self.out_features}, "
+            f"rank={self.rank}, scaling={self.scaling:.4f}"
+        )

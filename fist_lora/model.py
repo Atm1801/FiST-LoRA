@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from typing import List, Dict, Optional, Tuple
 
-from fist_lora.layers import FiSTLoRALinear
+from fist_lora.layers import FiSTLoRALinear, StandardLoRALinear
 
 
 def _get_parent_and_attr(model: nn.Module, full_name: str) -> Tuple[nn.Module, str]:
@@ -104,6 +104,48 @@ def inject_fist_lora(
             module.R.requires_grad_(True)
 
     # Unfreeze the classification/LM head
+    for name, param in model.named_parameters():
+        if any(kw in name for kw in head_keywords):
+            param.requires_grad_(True)
+
+    return model
+
+
+def inject_standard_lora(
+    model: nn.Module,
+    target_module_names: List[str],
+    alpha: float = 32.0,
+    rank: int = 8,
+    head_keywords: Optional[List[str]] = None,
+) -> nn.Module:
+    """
+    Replace target nn.Linear modules with StandardLoRALinear (manual LoRA).
+    Avoids PEFT's wrappers entirely, so gradient flow is straightforward.
+    Trainable: lora_A, lora_B per module + the task head.
+    """
+    if head_keywords is None:
+        head_keywords = ["classifier", "score", "qa_outputs"]
+
+    replacements = []
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear) and any(
+            name.endswith(t) for t in target_module_names
+        ):
+            replacements.append(name)
+
+    for name in replacements:
+        parent, attr = _get_parent_and_attr(model, name)
+        original_linear = getattr(parent, attr)
+        setattr(parent, attr, StandardLoRALinear(original_linear, alpha=alpha, rank=rank))
+
+    for param in model.parameters():
+        param.requires_grad_(False)
+
+    for module in model.modules():
+        if isinstance(module, StandardLoRALinear):
+            module.lora_A.requires_grad_(True)
+            module.lora_B.requires_grad_(True)
+
     for name, param in model.named_parameters():
         if any(kw in name for kw in head_keywords):
             param.requires_grad_(True)
