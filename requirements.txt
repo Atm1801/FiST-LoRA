@@ -1,11 +1,11 @@
-transformers>=4.40.0
-peft>=0.10.0
-datasets>=2.14.0
+transformers==4.45.0
+peft>=0.11.0,<0.13.0
+datasets>=2.14.0,<3.0.0
 evaluate>=0.4.0
-accelerate>=0.24.0
+accelerate>=0.30.0,<1.0.0
 bitsandbytes>=0.41.0
 scipy>=1.10.0
-numpy>=1.24.0
+numpy>=1.24.0,<2.0.0
 wandb
 pyyaml
 tqdm

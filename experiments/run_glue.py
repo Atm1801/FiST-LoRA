@@ -146,19 +146,20 @@ TASKS = {
 ALL_METHODS = ["lora", "lora_xs", "fist_no_fisher", "fist_full", "pissa", "lora_sb"]
 MODEL_NAME = "roberta-large"
 TARGET_MODULES = ["query", "key", "value"]
-ALPHA = 32.0
+ALPHA = 16.0  # Matches LoRA-XS / LoRA-SB / LoRA papers (was 32 in PoC, never paper-validated)
 CALIBRATION_SAMPLES = 256
 INIT_SCALE = 0.01
-WARMUP_RATIO = 0.06  # LoRA-SB / LoRA paper standard
+WARMUP_RATIO = 0.06
 
-# LR per method at bs=256 (LoRA-SB's bs=128 lr=1e-3 scaled by sqrt(2)).
+# LR per method — LoRA-SB exact recipe (bs=128 lr=1e-3 for everything).
+# LoRA paper uses lr=4e-4 for vanilla LoRA on RoBERTa-large GLUE.
 METHOD_LRS = {
-    "lora": 7e-4,
-    "pissa": 7e-4,
-    "lora_xs": 1.4e-3,
-    "fist_no_fisher": 1.4e-3,
-    "fist_full": 1.4e-3,
-    "lora_sb": 1.4e-3,
+    "lora": 4e-4,
+    "pissa": 4e-4,
+    "lora_xs": 1e-3,
+    "fist_no_fisher": 1e-3,
+    "fist_full": 1e-3,
+    "lora_sb": 1e-3,
 }
 
 
@@ -483,10 +484,10 @@ def main():
                         help="Path to YAML config (overrides CLI args)")
     parser.add_argument("--report_to", type=str, default="none",
                         help="Reporting backend (none, wandb)")
-    parser.add_argument("--train_batch_size", type=int, default=256,
-                        help="Per-device train batch size (default: 256)")
-    parser.add_argument("--eval_batch_size", type=int, default=512,
-                        help="Per-device eval batch size (default: 512)")
+    parser.add_argument("--train_batch_size", type=int, default=128,
+                        help="Per-device train batch size (default: 128, LoRA-SB recipe)")
+    parser.add_argument("--eval_batch_size", type=int, default=256,
+                        help="Per-device eval batch size (default: 256)")
     parser.add_argument("--fp16", action="store_true", default=False,
                         help="Use fp16 mixed precision (unstable on RoBERTa-large)")
     parser.add_argument("--bf16", action="store_true", default=True,
@@ -741,7 +742,7 @@ def main():
                         args=training_args,
                         train_dataset=train_tok,
                         eval_dataset=val_tok,
-                        processing_class=tokenizer,
+                        tokenizer=tokenizer,
                         data_collator=DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8),
                         compute_metrics=build_compute_metrics(
                             task_cfg["metric"], task_name
