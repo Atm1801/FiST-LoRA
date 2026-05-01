@@ -145,6 +145,7 @@ def gradient_projected_R(
         batch = {
             k: v.to(device) if isinstance(v, torch.Tensor) else v
             for k, v in batch.items()
+            if k != "length"
         }
 
         try:

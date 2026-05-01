@@ -84,6 +84,7 @@ def compute_diagonal_fisher(
         batch = {
             k: v.to(device) if isinstance(v, torch.Tensor) else v
             for k, v in batch.items()
+            if k != "length"
         }
 
         try:
@@ -185,6 +186,7 @@ def compute_diagonal_fisher_with_hooks(
         batch = {
             k: v.to(device) if isinstance(v, torch.Tensor) else v
             for k, v in batch.items()
+            if k != "length"
         }
 
         try:

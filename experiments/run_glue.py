@@ -378,7 +378,7 @@ def compute_gradient_svd(model, dataloader, target_module_names, rank, num_sampl
     for batch in dataloader:
         if samples_seen >= num_samples:
             break
-        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items() if k != "length"}
         outputs = model(**batch)
         loss = outputs.loss if outputs.loss is not None else outputs.logits.sum()
         loss.backward()

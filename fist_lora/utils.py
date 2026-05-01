@@ -101,6 +101,7 @@ def warmup_classifier_head(
         batch = {
             k: v.to(device) if isinstance(v, torch.Tensor) else v
             for k, v in batch.items()
+            if k != "length"
         }
         outputs = model(**batch)
         loss = outputs.loss
