@@ -1,0 +1,12 @@
+# GLUE STSB: epochs, max length and metric per task.
+name: stsb
+kind: glue
+dataset: nyu-mll/glue
+dataset_config: stsb
+dataset_revision: bcdcba79d07bc864c1c254ccfcedcce55bcc9a8c
+text_keys: [sentence1, sentence2]
+num_labels: 1
+metric: spearmanr
+epochs: 30
+max_length: 256
+eval_split: validation

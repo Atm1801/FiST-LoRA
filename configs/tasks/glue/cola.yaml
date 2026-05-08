@@ -1,0 +1,12 @@
+# GLUE COLA: epochs, max length and metric per task.
+name: cola
+kind: glue
+dataset: nyu-mll/glue
+dataset_config: cola
+dataset_revision: bcdcba79d07bc864c1c254ccfcedcce55bcc9a8c
+text_keys: [sentence, null]
+num_labels: 2
+metric: matthews_correlation
+epochs: 30
+max_length: 128
+eval_split: validation

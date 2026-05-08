@@ -1,0 +1,12 @@
+# GLUE QNLI: epochs, max length and metric per task.
+name: qnli
+kind: glue
+dataset: nyu-mll/glue
+dataset_config: qnli
+dataset_revision: bcdcba79d07bc864c1c254ccfcedcce55bcc9a8c
+text_keys: [question, sentence]
+num_labels: 2
+metric: accuracy
+epochs: 10
+max_length: 256
+eval_split: validation

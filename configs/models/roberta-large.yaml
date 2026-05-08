@@ -1,0 +1,43 @@
+# RoBERTa-large (355M): GLUE experiments.
+model:
+  name: FacebookAI/roberta-large
+  revision: 722cf37b1afa9454edce342e7895e588b6ff1d59
+  task_type: seq_cls
+  # Wq, Wk, Wv, Wo of all 24 attention layers (L*M = 96 modules).
+  target_modules:
+    - '.*\.attention\.self\.(query|key|value)'
+    - '.*\.attention\.output\.dense'
+  expected_num_targets: 96
+  alpha: 16
+  precision: bf16-mixed
+  gradient_checkpointing: false
+  head_modules: [classifier]
+  train_head: true
+  architecture: {num_layers: 24, hidden_size: 1024, intermediate_size: 4096, num_attention_heads: 16, num_key_value_heads: 16}
+
+calibration:
+  num_samples: 256
+  seed: 42
+  warmup_steps: 100
+  warmup_batch_size: 32
+  warmup_lr: 1.0e-3
+  clip_quantile: 0.95
+  eps: 1.0e-8
+  init_scale: 0.01
+  microbatch_size: 16
+
+training:
+  per_device_train_batch_size: 128   # effective batch 128, no accumulation
+  gradient_accumulation_steps: 1
+  per_device_eval_batch_size: 256
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  lr_scheduler_type: linear
+  logging_steps: 10
+  group_by_length: true               # seeded through the Trainer
+  eval_every_epoch: true
+
+# Original LoRA-SB GLUE setting (official train_glue.py): 2 examples, loader batch 128.
+lora_sb:
+  num_samples: 2
+  estimation_batch_size: 128
