@@ -1,0 +1,9 @@
+# MetaMathQA, a seeded 50K-example subset.
+name: metamathqa50k
+kind: metamath
+dataset: meta-math/MetaMathQA
+dataset_revision: aa4f34d3d2d3231299b5b03d9b3e5a20da45aa18
+subset_size: 50000
+subset_seed: 42
+epochs: 2
+max_length: 512

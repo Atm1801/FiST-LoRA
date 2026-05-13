@@ -1,0 +1,8 @@
+# CommonSense170K (Hu et al. 2023, LLM-Adapters).
+name: commonsense170k
+kind: commonsense
+epochs: 3
+max_length: 256
+data_files: data/commonsense_170k.json
+data_url: https://raw.githubusercontent.com/AGI-Edgerunners/LLM-Adapters/fe675038fb60d61b3fc03d98673d6d11d2bef4f9/ft-training_set/commonsense_170k.json
+data_git_blob_sha: 529e426b33d4cdb1d0c4a275a1a7245ad081fd91
