@@ -1,0 +1,61 @@
+# CPU smoke test of the full GLUE pipeline: tiny random RoBERTa, synthetic fixtures.
+# Exercises every method end to end in seconds; numbers are meaningless.
+name: smoke_glue
+output_dir: results/smoke_glue
+model:
+  name: hf-internal-testing/tiny-random-RobertaForSequenceClassification
+  revision: 0e0860b1a5e9f6691cefeaee44746aab514ce7ac
+  task_type: seq_cls
+  target_modules:
+    - '.*\.attention\.self\.(query|key|value)'
+    - '.*\.attention\.output\.dense'
+  expected_num_targets: 20
+  alpha: 16
+  precision: bf16-mixed
+  gradient_checkpointing: false
+  head_modules: [classifier]
+  train_head: true
+  architecture: {num_layers: 5, hidden_size: 32, intermediate_size: 37, num_attention_heads: 4, num_key_value_heads: 4}
+tasks:
+  - name: pair
+    kind: glue
+    data_files: {train: tests/fixtures/glue_pair/train.jsonl, validation: tests/fixtures/glue_pair/validation.jsonl}
+    text_keys: [sentence1, sentence2]
+    num_labels: 2
+    metric: f1
+    epochs: 2
+    max_length: 64
+  - name: regression
+    kind: glue
+    data_files: {train: tests/fixtures/glue_regression/train.jsonl, validation: tests/fixtures/glue_regression/validation.jsonl}
+    text_keys: [sentence1, sentence2]
+    num_labels: 1
+    metric: spearmanr
+    epochs: 2
+    max_length: 64
+seeds: [42, 123]
+methods:
+  - {name: full_ft, lr: 1.0e-4}
+  - {name: lora, lr: 4.0e-4, ranks: [4]}
+  - {name: pissa, lr: 4.0e-4, ranks: [4]}
+  - {name: lora_xs, lr: 1.0e-3, ranks: [2, 4]}
+  - {name: lora_sb, lr: 1.0e-3, ranks: [2, 4]}
+  - {name: fist_no_fisher, lr: 1.0e-3, ranks: [2, 4]}
+  - {name: fist, lr: 1.0e-3, ranks: [2, 4]}
+  - {name: fisher_zero, lr: 1.0e-3, ranks: [4]}
+  - {name: fisher_sigma, lr: 1.0e-3, ranks: [4]}
+calibration:
+  num_samples: 16
+  seed: 42
+  warmup_steps: 3
+  warmup_batch_size: 8
+  microbatch_size: 4
+  cache_dir: results/smoke_glue/cache
+training:
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 32
+  logging_steps: 1
+  warmup_ratio: 0.06
+lora_sb:
+  num_samples: 2
+  estimation_batch_size: 16

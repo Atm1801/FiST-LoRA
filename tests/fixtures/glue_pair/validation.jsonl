@@ -1,0 +1,32 @@
+{"sentence1": "slowly road red road sad", "sentence2": "slowly road red road sad", "label": 0}
+{"sentence1": "the quickly moon small slowly a red", "sentence2": "the quickly moon small slowly a red", "label": 0}
+{"sentence1": "dog on bird sat park sat tree", "sentence2": "bird sun slowly blue on", "label": 1}
+{"sentence1": "quickly on mat slowly small sad ran", "sentence2": "quickly on mat slowly small sad ran", "label": 0}
+{"sentence1": "happy star a big", "sentence2": "happy star a big", "label": 0}
+{"sentence1": "car slowly the a big sat star", "sentence2": "tree car ran quickly sun star", "label": 1}
+{"sentence1": "dog river happy star mat tree star", "sentence2": "dog river happy star mat tree star", "label": 0}
+{"sentence1": "sat park river cat", "sentence2": "sat park river cat", "label": 0}
+{"sentence1": "sad house sun blue slowly sat moon", "sentence2": "sad house sun blue slowly sat moon", "label": 0}
+{"sentence1": "star river a car dog cat", "sentence2": "star river a car dog cat", "label": 0}
+{"sentence1": "big tree small sat sad mat", "sentence2": "dog quickly big big sad", "label": 1}
+{"sentence1": "house sad road a tree", "sentence2": "house sad road a tree", "label": 0}
+{"sentence1": "blue moon star bird park big slowly red", "sentence2": "on sat sun sat blue", "label": 1}
+{"sentence1": "house slowly ran tree river big red", "sentence2": "a happy happy sun sad small happy", "label": 1}
+{"sentence1": "slowly big ran moon", "sentence2": "slowly big ran moon", "label": 0}
+{"sentence1": "a the red happy blue the sad dog", "sentence2": "river moon river blue", "label": 1}
+{"sentence1": "red cat sat car", "sentence2": "red cat sat car", "label": 0}
+{"sentence1": "road sun big moon mat ran", "sentence2": "a sat quickly slowly sun small", "label": 1}
+{"sentence1": "on small quickly road river quickly ran", "sentence2": "on small quickly road river quickly ran", "label": 0}
+{"sentence1": "sad small ran a on", "sentence2": "sad small ran a on", "label": 0}
+{"sentence1": "quickly bird happy blue moon mat bird", "sentence2": "quickly bird happy blue moon mat bird", "label": 0}
+{"sentence1": "house sun cat blue cat", "sentence2": "house sun cat blue cat", "label": 0}
+{"sentence1": "on red cat moon", "sentence2": "mat car big car dog", "label": 1}
+{"sentence1": "star big star red quickly slowly cat road", "sentence2": "moon quickly house slowly happy park sun happy", "label": 1}
+{"sentence1": "small park cat cat cat", "sentence2": "small park cat cat cat", "label": 0}
+{"sentence1": "big road the ran", "sentence2": "big road the ran", "label": 0}
+{"sentence1": "river mat car blue tree mat slowly", "sentence2": "river mat car blue tree mat slowly", "label": 0}
+{"sentence1": "sat car dog bird small small tree slowly", "sentence2": "the sad cat a red dog", "label": 1}
+{"sentence1": "sad red a fish a", "sentence2": "sad red a fish a", "label": 0}
+{"sentence1": "big sad blue park happy red", "sentence2": "cat big tree dog the", "label": 1}
+{"sentence1": "happy moon slowly cat bird quickly happy", "sentence2": "happy moon slowly cat bird quickly happy", "label": 0}
+{"sentence1": "dog dog mat sat", "sentence2": "quickly a slowly car dog", "label": 1}
