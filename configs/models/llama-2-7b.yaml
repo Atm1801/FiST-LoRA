@@ -1,0 +1,45 @@
+# LLaMA-2-7B, 4-bit NF4 backbone: commonsense experiments.
+model:
+  name: meta-llama/Llama-2-7b-hf       # gated: accept the license on the Hub and `huggingface-cli login`
+  revision: 01c7f73d771dfac7d292323805ebc428287df4f9
+  task_type: causal_lm
+  # Wq, Wk, Wv, Wo, Wgate, Wup, Wdown of all 32 decoder layers (L*M = 224 modules).
+  target_modules:
+    - '.*\.self_attn\.(q_proj|k_proj|v_proj|o_proj)'
+    - '.*\.mlp\.(gate_proj|up_proj|down_proj)'
+  expected_num_targets: 224
+  alpha: 32
+  precision: nf4
+  gradient_checkpointing: true
+  head_modules: [lm_head]
+  train_head: false                    # pretrained lm_head, frozen for every method
+  pad_token: unk                       # LLM-Adapters convention (pad id 0)
+  architecture: {num_layers: 32, hidden_size: 4096, intermediate_size: 11008, num_attention_heads: 32, num_key_value_heads: 32}
+
+calibration:
+  num_samples: 256
+  seed: 42
+  warmup_steps: 100
+  warmup_batch_size: 4
+  warmup_lr: 1.0e-3
+  clip_quantile: 0.95
+  eps: 1.0e-8
+  init_scale: 0.01
+  microbatch_size: 1
+  modules_per_pass: 28                 # 4 decoder layers per pass (~6.5 GB of fp32 statistics)
+
+training:
+  per_device_train_batch_size: 4       # 4 x 16 = 64
+  gradient_accumulation_steps: 16
+  per_device_eval_batch_size: 4
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  lr_scheduler_type: linear
+  logging_steps: 10
+  group_by_length: false
+  eval_every_epoch: false
+
+# Original LoRA-SB commonsense setting (official train_cr.py): 170 examples, batch 10.
+lora_sb:
+  num_samples: 170
+  estimation_batch_size: 10

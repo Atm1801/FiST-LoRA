@@ -1,0 +1,44 @@
+# Mistral-7B-v0.1, 4-bit NF4 backbone: math experiments.
+model:
+  name: mistralai/Mistral-7B-v0.1
+  revision: 27d67f1b5f57dc0953326b2601d68371d40ea8da
+  task_type: causal_lm
+  target_modules:
+    - '.*\.self_attn\.(q_proj|k_proj|v_proj|o_proj)'
+    - '.*\.mlp\.(gate_proj|up_proj|down_proj)'
+  expected_num_targets: 224
+  alpha: 32
+  precision: nf4
+  gradient_checkpointing: true
+  head_modules: [lm_head]
+  train_head: false
+  pad_token: eos                       # Mistral has no pad token
+  architecture: {num_layers: 32, hidden_size: 4096, intermediate_size: 14336, num_attention_heads: 32, num_key_value_heads: 8}
+
+calibration:
+  num_samples: 256
+  seed: 42
+  warmup_steps: 100
+  warmup_batch_size: 4
+  warmup_lr: 1.0e-3
+  clip_quantile: 0.95
+  eps: 1.0e-8
+  init_scale: 0.01
+  microbatch_size: 1
+  modules_per_pass: 28
+
+training:
+  per_device_train_batch_size: 4       # 4 x 32 = 128
+  gradient_accumulation_steps: 32
+  per_device_eval_batch_size: 4
+  weight_decay: 0.0
+  warmup_ratio: 0.06
+  lr_scheduler_type: linear
+  logging_steps: 10
+  group_by_length: false
+  eval_every_epoch: false
+
+# Original LoRA-SB math setting (official train_arithmetic.py): 50 examples, batch 3.
+lora_sb:
+  num_samples: 50
+  estimation_batch_size: 3
