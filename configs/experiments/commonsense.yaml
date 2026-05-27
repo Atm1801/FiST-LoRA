@@ -1,0 +1,16 @@
+# LLaMA-2-7B (NF4) trained on CommonSense170K, evaluated with lm-eval-harness.
+_base_: [../models/llama-2-7b.yaml]
+name: commonsense
+output_dir: results/commonsense
+tasks: [causal/commonsense170k]
+seeds: [42, 123, 456]
+methods:
+  - {name: lora, lr: 2.0e-5, ranks: [8]}
+  - {name: lora_xs, lr: 1.0e-4, ranks: [8, 16, 24]}
+  - {name: lora_sb, lr: 1.0e-4, ranks: [8, 16, 24]}
+  - {name: fist_no_fisher, lr: 1.0e-4, ranks: [8, 16, 24]}
+  - {name: fist, lr: 1.0e-4, ranks: [8, 16, 24]}
+evaluation:
+  batch_size: 16
+  num_fewshot: 0
+  lm_eval_tasks: [boolq, piqa, siqa, hellaswag, winogrande, arc_easy, arc_challenge, openbookqa]
