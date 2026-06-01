@@ -1,0 +1,26 @@
+# Mistral-7B (NF4) trained on MetaMathQA-50K, exact match on GSM8K and MATH.
+_base_: [../models/mistral-7b.yaml]
+name: math
+output_dir: results/math
+tasks: [causal/metamathqa50k]
+seeds: [42, 123, 456]
+methods:
+  - {name: lora, lr: 2.0e-5, ranks: [8]}
+  - {name: lora_xs, lr: 1.0e-4, ranks: [8, 16, 24]}
+  - {name: lora_sb, lr: 1.0e-4, ranks: [8, 16, 24]}
+  - {name: fist_no_fisher, lr: 1.0e-4, ranks: [8, 16, 24]}
+  - {name: fist, lr: 1.0e-4, ranks: [8, 16, 24]}
+evaluation:
+  batch_size: 32
+  gsm8k:
+    dataset: openai/gsm8k
+    config: main
+    revision: 740312add88f781978c0658806c59bc2815b9866
+    split: test
+    max_new_tokens: 256
+  math:
+    dataset: EleutherAI/hendrycks_math     # mirror of the removed hendrycks/competition_math
+    revision: 21a5633873b6a120296cce3e2df9d5550074f4a3
+    configs: [algebra, counting_and_probability, geometry, intermediate_algebra, number_theory, prealgebra, precalculus]
+    split: test
+    max_new_tokens: 512

@@ -1,0 +1,48 @@
+# CPU smoke test of the causal-LM pipeline (commonsense + math): tiny random LLaMA,
+# synthetic fixtures, full-precision weights (NF4 needs CUDA; see tests marked `gpu`).
+name: smoke_causal
+output_dir: results/smoke_causal
+model:
+  name: hf-internal-testing/tiny-random-LlamaForCausalLM
+  revision: 9fb191250dd56d0ba7ec9785a025ed29c03d5998
+  task_type: causal_lm
+  target_modules:
+    - '.*\.self_attn\.(q_proj|k_proj|v_proj|o_proj)'
+    - '.*\.mlp\.(gate_proj|up_proj|down_proj)'
+  expected_num_targets: 14
+  alpha: 32
+  precision: bf16-mixed
+  gradient_checkpointing: true
+  head_modules: [lm_head]
+  train_head: false
+  pad_token: unk
+  architecture: {num_layers: 2, hidden_size: 16, intermediate_size: 64, num_attention_heads: 4, num_key_value_heads: 4}
+tasks:
+  - {name: commonsense_mini, kind: commonsense, data_files: tests/fixtures/commonsense_mini.json, epochs: 1, max_length: 64}
+  - {name: metamath_mini, kind: metamath, data_files: tests/fixtures/metamath_mini.jsonl, epochs: 1, max_length: 64}
+seeds: [42]
+methods:
+  - {name: lora, lr: 2.0e-5, ranks: [4]}
+  - {name: lora_xs, lr: 1.0e-4, ranks: [4]}
+  - {name: lora_sb, lr: 1.0e-4, ranks: [4]}
+  - {name: fist_no_fisher, lr: 1.0e-4, ranks: [4]}
+  - {name: fist, lr: 1.0e-4, ranks: [4]}
+calibration:
+  num_samples: 8
+  seed: 42
+  warmup_steps: 2
+  warmup_batch_size: 4
+  microbatch_size: 2
+  modules_per_pass: 5
+  cache_dir: results/smoke_causal/cache
+training:
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 2
+  logging_steps: 1
+  eval_every_epoch: false
+lora_sb:
+  num_samples: 6
+  estimation_batch_size: 4
+evaluation:
+  enabled: false          # lm-eval needs the real benchmarks; math is covered by tests
+  batch_size: 4
