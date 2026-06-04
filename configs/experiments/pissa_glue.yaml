@@ -1,0 +1,6 @@
+# PiSSA (r=8) on GLUE, with the same protocol and learning rate as LoRA.
+_base_: [glue.yaml]
+name: pissa_glue
+output_dir: results/pissa_glue
+methods:
+  - {name: pissa, lr: 4.0e-4, ranks: [8]}

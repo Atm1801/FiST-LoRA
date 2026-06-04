@@ -1,0 +1,14 @@
+# RoBERTa-large on six GLUE tasks, 3 seeds.
+# Value per run = best validation metric across epochs, then mean over seeds.
+_base_: [../models/roberta-large.yaml]
+name: glue
+output_dir: results/glue
+tasks: [glue/cola, glue/rte, glue/mrpc, glue/stsb, glue/qnli, glue/sst2]
+seeds: [42, 123, 456]
+methods:
+  - {name: full_ft, lr: 1.0e-5}
+  - {name: lora, lr: 4.0e-4, ranks: [8]}
+  - {name: lora_xs, lr: 1.0e-3, ranks: [8, 16, 24]}
+  - {name: lora_sb, lr: 1.0e-3, ranks: [8, 16, 24]}
+  - {name: fist_no_fisher, lr: 1.0e-3, ranks: [8, 16, 24]}
+  - {name: fist, lr: 1.0e-3, ranks: [8, 16, 24]}

@@ -1,0 +1,13 @@
+# Component ablations on CommonSense170K (LLaMA-2-7B); same cells as ablation_glue.yaml.
+_base_: [commonsense.yaml]
+name: ablation_commonsense
+output_dir: results/ablation_commonsense
+methods:
+  - {name: fist, lr: 1.0e-4, ranks: [8]}
+  - {name: fist_no_fisher, lr: 1.0e-4, ranks: [8]}
+  - {name: svd_zero, lr: 1.0e-4, ranks: [8]}
+  - {name: fisher_zero, lr: 1.0e-4, ranks: [8]}
+  - {name: svd_sigma, lr: 1.0e-4, ranks: [8]}
+  - {name: fisher_sigma, lr: 1.0e-4, ranks: [8]}
+  - {name: fist_gamma0.001, method: fist, lr: 1.0e-4, ranks: [8], params: {init_scale: 0.001}}
+  - {name: fist_gamma0.1, method: fist, lr: 1.0e-4, ranks: [8], params: {init_scale: 0.1}}

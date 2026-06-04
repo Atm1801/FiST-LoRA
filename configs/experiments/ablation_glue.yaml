@@ -1,0 +1,15 @@
+# Component ablations on GLUE:
+#   outer subspace {plain SVD, Fisher SVD} x inner init {gradient projection, zero, diag-Sigma},
+#   plus the init-scale sweep gamma in {0.001, 0.01, 0.1} for the full method.
+_base_: [glue.yaml]
+name: ablation_glue
+output_dir: results/ablation_glue
+methods:
+  - {name: fist, lr: 1.0e-3, ranks: [8]}
+  - {name: fist_no_fisher, lr: 1.0e-3, ranks: [8]}
+  - {name: svd_zero, lr: 1.0e-3, ranks: [8]}
+  - {name: fisher_zero, lr: 1.0e-3, ranks: [8]}
+  - {name: svd_sigma, lr: 1.0e-3, ranks: [8]}
+  - {name: fisher_sigma, lr: 1.0e-3, ranks: [8]}
+  - {name: fist_gamma0.001, method: fist, lr: 1.0e-3, ranks: [8], params: {init_scale: 0.001}}
+  - {name: fist_gamma0.1, method: fist, lr: 1.0e-3, ranks: [8], params: {init_scale: 0.1}}
